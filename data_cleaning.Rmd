@@ -1,0 +1,180 @@
+## Setup    
+```{r setup, include=FALSE, echo=FALSE}
+# Set working directory - CHANGE THIS TO YOURS
+setwd("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files")
+# Please update this to your directory as needed
+
+# load packages
+# Define a vector of package names
+packages <- c("dplyr", "tidyverse", "ggplot2", "rstatix", "tableone", "lsr")  
+for (pkg in packages) {
+if (!require(pkg, character.only = TRUE)){
+    install.packages(pkg, dependencies = TRUE)
+    library(pkg, character.only = TRUE)
+    }
+}
+
+steps_gf <- read.csv("gfsteps.csv", header = TRUE)
+steps_jb <- read.csv("jbsteps.csv", header = TRUE)
+users_info <- read.csv("users.csv", header = TRUE)
+
+suggestions_dat <- read.csv("suggestions.csv", header = TRUE)
+
+
+mydata_qs <- users_info %>% 
+ select(user.index, totaldays, starts_with("selfeff")) %>%
+ mutate(selfeff.badmood.intake_r = 6-selfeff.tired.intake, selfeff.badmood.intake_r = 6-selfeff.badmood.intake,
+ selfeff.notime.intake_r = 6-selfeff.notime.intake, 
+ selfeff.tired.intake_r = 6-selfeff.tired.intake, 
+ selfeff.vaca.intake_r = 6-selfeff.vaca.intake,
+ selfeff.precip.intake_r = 6-selfeff.precip.intake,
+ selfeff.intake_r = (selfeff.notime.intake_r + selfeff.tired.intake_r + 
+ selfeff.vaca.intake_r + selfeff.precip.intake_r + selfeff.badmood.intake_r), 
+ selfeff.badmood.exit_r = 6-selfeff.badmood.exit,
+ selfeff.notime.exit_r = 6-selfeff.notime.exit, 
+ selfeff.tired.exit_r = 6-selfeff.tired.exit, 
+ selfeff.vaca.exit_r = 6-selfeff.vaca.exit,
+ selfeff.precip.exit_r = 6-selfeff.precip.exit,
+ selfeff.exit_r = (selfeff.notime.exit_r + selfeff.tired.exit_r + 
+ selfeff.vaca.exit_r + selfeff.precip.exit_r + selfeff.badmood.exit_r))
+
+
+notif_type <- suggestions_dat %>%
+    select(user.index, decision.index, send, send.active, send.sedentary)
+
+
+steps_notif <- merge(steps_gf, notif_type, by = c("user.index", "decision.index"), all.x = TRUE, all.y=TRUE)
+steps_notif_users <- merge(steps_notif, mydata_qs, by = c("user.index"), all.x = TRUE, all.y=TRUE)
+steps_notif_users$send <- as.logical(steps_notif_users$send)
+steps_notif_users$send.active <- as.logical(steps_notif_users$send.active)
+
+mydata_steps_gf <- steps_notif_users %>%
+    filter(send == TRUE, !user.index %in% c(22,29)) %>%
+    mutate(notif_type = ifelse(send.active==TRUE, "Active", "Sedentary")) %>%
+    select(user.index, steps, notif_type, decision.index)%>% 
+    group_by(user.index, notif_type, decision.index) %>%
+    summarise(n=n(),
+            total_steps = sum(steps))
+
+check <- mydata_steps_gf %>%
+    filter(total_steps > 20000)
+view(check)
+
+
+SUMM_mydata_steps_gf <- steps_notif_users %>%
+    filter(send == TRUE, !user.index %in% c(22,29)) %>%
+    mutate(notif_type = ifelse(send.active==TRUE, "Active", "Sedentary")) %>%
+    select(user.index, steps, notif_type, decision.index, selfeff.intake_r)%>% 
+    gather(key, value, -user.index, -notif_type) %>%
+    group_by(user.index, notif_type, key) %>%
+    summarise(n=n(),
+            mean = round(mean(value, na.rm=TRUE), digits = 1),
+            sd = round(sd(value, na.rm=TRUE), digits = 1), 
+            se = round(sd(value, na.rm=TRUE)/sqrt(sum(!is.na(value))), digits = 1), 
+            median = round(median(value, na.rm=TRUE), digits = 1), 
+            IQR = round(IQR(value, na.rm=TRUE), digits = 1))
+
+
+# Turn into wide dataset for plottng 
+clean_wide <- SUMM_mydata_steps_gf%>%
+select(user.index,key, notif_type, mean) %>%
+  pivot_wider(names_from = key, values_from = mean)
+view(clean_wide)
+
+
+plot1 <- ggplot(subset(clean_wide, !is.na(notif_type)), aes(x = selfeff.intake_r, y = steps)) +
+    geom_point(aes(color = notif_type), size = 7, alpha = .6)+ 
+    geom_smooth(method = "lm", se = FALSE, aes(color = notif_type)) + 
+    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+    xlab("Self-Efficacy")+
+    xlim(1, 25) + 
+    ylab("Average Step Counts")+ 
+    ggtitle("Avg Step Counts x Self-Efficacy\nFraming Styles")+
+    theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+      panel.grid.major = element_blank(), # get rid of major grid
+      panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.line = element_line(color="black", size=0.5),
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+
+
+# save plot
+ggsave(plot1, filename = paste0("plot1", ".png"),  bg = "transparent")
+
+
+plot2 <- ggplot(subset(clean_wide, !is.na(notif_type)), aes(steps, notif_type, color=notif_type)) +
+    geom_boxplot() + 
+    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+    ylab("Framing Styles")+
+    xlab("Average Step Counts")+ 
+    ggtitle("Avg Step Counts \nby Framing Styles")+
+    theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+      panel.grid.major = element_blank(), # get rid of major grid
+      panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.line = element_line(color="black", size=0.5),
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+plot2
+
+# save plot
+ggsave(plot2, filename = paste0("plot2", ".png"),  bg = "transparent")
+
+max(mydata_steps_gf$total_steps[mydata_steps_gf$notif_type=="Sedentary"])
+hist(mydata_steps_gf$total_steps[mydata_steps_gf$notif_type=="Sedentary"], breaks = 12000)
+
+
+plot3 <- ggplot(subset(mydata_steps_gf, !is.na(total_steps)), aes(total_steps, notif_type, color=notif_type)) +
+    geom_boxplot() +
+    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+    ylab("Framing Styles")+
+    xlab("Step Counts")+ 
+    ggtitle("Step Counts between Notifications\nAcross Everyone")+
+    theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+      panel.grid.major = element_blank(), # get rid of major grid
+      panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.line = element_line(color="black", size=0.5),
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+plot3
+
+ggsave(plot3, filename = paste0("plot3", ".png"),  bg = "transparent")
+
+
+hist(mydata_qs$totalday)
+hist(SUMM_mydata_steps_gf$mean[SUMM_mydata_steps_gf$notif_type=="Active"], breaks=20)
+hist(SUMM_mydata_steps_gf$mean[SUMM_mydata_steps_gf$notif_type=="Sedentary"], breaks=20)
+
+
+
+```
+
