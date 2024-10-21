@@ -6,7 +6,7 @@ setwd("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files")
 
 # load packages
 # Define a vector of package names
-packages <- c("dplyr", "tidyverse", "ggplot2", "rstatix", "tableone", "lsr")  
+packages <- c("dplyr", "tidyverse", "ggplot2", "rstatix", "tableone", "lsr", "zoo", "lme4", "glmmTMB", "sjPlot", "ggeffects")  
 for (pkg in packages) {
 if (!require(pkg, character.only = TRUE)){
     install.packages(pkg, dependencies = TRUE)
@@ -14,13 +14,14 @@ if (!require(pkg, character.only = TRUE)){
     }
 }
 
+# input raw data
 steps_gf <- read.csv("gfsteps.csv", header = TRUE)
 steps_jb <- read.csv("jbsteps.csv", header = TRUE)
 users_info <- read.csv("users.csv", header = TRUE)
 
 suggestions_dat <- read.csv("suggestions.csv", header = TRUE)
 
-
+# view(suggestions_dat)
 mydata_qs <- users_info %>% 
  select(user.index, totaldays, starts_with("selfeff")) %>%
  mutate(selfeff.badmood.intake_r = 6-selfeff.tired.intake, selfeff.badmood.intake_r = 6-selfeff.badmood.intake,
@@ -38,28 +39,351 @@ mydata_qs <- users_info %>%
  selfeff.exit_r = (selfeff.notime.exit_r + selfeff.tired.exit_r + 
  selfeff.vaca.exit_r + selfeff.precip.exit_r + selfeff.badmood.exit_r))
 
+# histogram of total days (why we exclude user #29)
+hist_totalday <- ggplot(mydata_qs, aes(x = totaldays)) + 
+  geom_histogram(bins = 51,  color = "black") +
+  labs(title = "Distribution of Total Study Participation Days", 
+       x = "Days", 
+       y = "Frequency") +
+  theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
 
+hist_totalday
+# save plot
+ggsave(hist_totalday, filename = paste0("hist_totalday", ".png"),  bg = "transparent")
+
+
+# create a notification type data
 notif_type <- suggestions_dat %>%
     select(user.index, decision.index, send, send.active, send.sedentary)
 
-
+# merge steps data and notif type data and users data
 steps_notif <- merge(steps_gf, notif_type, by = c("user.index", "decision.index"), all.x = TRUE, all.y=TRUE)
 steps_notif_users <- merge(steps_notif, mydata_qs, by = c("user.index"), all.x = TRUE, all.y=TRUE)
 steps_notif_users$send <- as.logical(steps_notif_users$send)
 steps_notif_users$send.active <- as.logical(steps_notif_users$send.active)
+steps_notif_users <- steps_notif_users %>%
+    arrange(steps.utime)%>%
+    mutate(user.index=as.numeric(user.index))
 
-mydata_steps_gf <- steps_notif_users %>%
-    filter(send == TRUE, !user.index %in% c(22,29)) %>%
-    mutate(notif_type = ifelse(send.active==TRUE, "Active", "Sedentary")) %>%
-    select(user.index, steps, notif_type, decision.index)%>% 
-    group_by(user.index, notif_type, decision.index) %>%
+summary(steps_notif_users$steps, na.rm=TRUE) 
+# get participant with max steps, and exclude 
+
+#export table
+# write.csv(as.data.frame(steps_notif_users), paste0("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files", "/steps_notif_users", ".csv"))
+
+# Function to handle missing data in 'steps' column using LOCF
+handle_missing_steps_locf <- function(data) {
+  # Apply LOCF (Last Observation Carried Forward) on the 'steps' column
+  data$steps <- na.locf(data$steps, na.rm = FALSE)
+  return(data)
+}
+
+
+clean_steps_notif_users <- steps_notif_users %>%
+    filter(send == TRUE, !user.index %in% c(29, 22)) %>% #user 29 was excluded because of total days
+    mutate(notif_type = as.factor(ifelse(send.active==TRUE, "Active", "Sedentary"))) %>%
+    filter(!is.na(notif_type)) %>%
+    mutate(steps_date = as.Date(steps.utime, format="%Y-%m-%d %H:%M:%S")) %>%
+    group_by(user.index) %>%
+    # Create a sequential 'day' number for each user based on the unique steps_date
+    mutate(day = as.numeric(factor(steps_date, levels = unique(steps_date)))) %>%
+    ungroup() %>%
+    arrange(user.index, decision.index)
+
+view(clean_steps_notif_users)
+#spme people seems to have missing data (decision index 10 for user 1)
+
+length(unique(clean_steps_notif_users$user.index))
+
+# clean_steps_notif_users$notif_type
+# exclusion: 
+# user 29 = participating < 20 days - we take time into account (day) in the model
+
+mydata_steps_gf <- clean_steps_notif_users %>%
+    filter(user.index != 22) %>% # user 22 was excluded because of >40,000 steps between notifs
+    select(user.index, steps_date, day, decision.index, notif_type, steps, selfeff.intake_r)%>% 
+    group_by(user.index, steps_date, day, notif_type, decision.index, selfeff.intake_r) %>%
     summarise(n=n(),
-            total_steps = sum(steps))
+            total_steps = sum(steps, na.rm = TRUE))%>%
+    ungroup() %>%
+    filter(!is.na(total_steps))%>% # some ptt has Invalid Value for a decision index (missing, excluded)
+    arrange(user.index, decision.index)
 
-check <- mydata_steps_gf %>%
-    filter(total_steps > 20000)
-view(check)
+length((unique(mydata_steps_gf$user.index)))  
+# view(mydata_steps_gf)
+# exclude user.index #22
+# summary(mydata_steps_gf$total_steps) 
+# check <- mydata_steps_gf %>%
+#     filter(total_steps > 30000) %>%
+#     arrange(decision.index)
+# # view(check)
+# check <- steps_gf %>%
+#     filter(user.index==22) %>%
+#     arrange(decision.index)
+# view(check)
 
+
+#export table
+write.csv(as.data.frame(mydata_steps_gf), paste0("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files", "/mydata_steps_gf", ".csv"))
+
+# STEP 1: check for normality rightly skewed
+steps_dist <- ggplot(mydata_steps_gf, aes(x = total_steps, fill=notif_type)) + 
+    geom_histogram(bins = 50,  color = "black") +
+    labs(title = "Distribution of Step Counts\nBetween Notification Types", 
+       x = "Steps", 
+       y = "Frequency", 
+       fill = "Notification Type") +
+      scale_fill_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+    theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=15, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )+
+  facet_wrap(~notif_type)
+
+steps_dist
+# save plot
+ggsave(steps_dist, filename = paste0("steps_dist_all", ".png"),  bg = "transparent")
+
+# STEP 2: check for Overdispersion in the Data (Variance >> Mean)
+SUMM_mydata_steps_gf <- clean_steps_notif_users %>%
+    select(user.index, steps, notif_type, decision.index, selfeff.intake_r)%>% 
+    gather(key, value, -notif_type) %>%
+    group_by(notif_type, key) %>%
+    summarise(n=n(),
+            mean = round(mean(value, na.rm=TRUE), digits = 1),
+            var = round(var(value, na.rm=TRUE), digits = 1),
+            sd = round(sd(value, na.rm=TRUE), digits = 1), 
+            se = round(sd(value, na.rm=TRUE)/sqrt(sum(!is.na(value))), digits = 1), 
+            median = round(median(value, na.rm=TRUE), digits = 1), 
+            IQR = round(IQR(value, na.rm=TRUE), digits = 1))
+view(SUMM_mydata_steps_gf)
+#====================================================================
+# RQ 1: Effects of Framing Styles on Step Counts
+#====================================================================
+# Convert relevant columns to factors
+mydata_steps_gf$user.index <- as.factor(mydata_steps_gf$user.index)
+mydata_steps_gf$notif_type <- as.factor(mydata_steps_gf$notif_type)
+
+# Fit the negative binomial GLMM
+model_nb_glmm <- glmmTMB(total_steps ~ notif_type + (1 | user.index), 
+                         data = mydata_steps_gf, 
+                         family = nbinom2)
+# View the summary of the model
+summary(model_nb_glmm)
+
+# glmm table 
+tab_model(model_nb_glmm, 
+          show.se = TRUE,   # Show standard errors
+          show.stat = TRUE, # Show z-values
+          show.p = TRUE)    # Show p-values)  # Add a title
+
+# Create a data frame with predicted values for each notification type
+mydata_steps_gf$predicted_steps <- predict(model_nb_glmm, type = "response")  # Predicted values on original scale
+
+# Summarize predicted steps by notification type for plotting
+predictions_summary <- mydata_steps_gf %>%
+  group_by(notif_type) %>%
+  summarize(mean_pred = mean(predicted_steps),
+            lower_ci = quantile(predicted_steps, 0.025),  # 2.5% CI
+            upper_ci = quantile(predicted_steps, 0.975),  # 97.5% CI
+            se_pred = round(sd(predicted_steps)/sqrt(length(predicted_steps))))
+
+# Plot predicted steps with confidence intervals
+pred_rq1 <- ggplot(predictions_summary, aes(x = notif_type, y = mean_pred, fill = notif_type)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_pred-se_pred, ymax = mean_pred+se_pred), width = 0.3, linewidth = 2) +
+  labs(title = "Predicted Step Counts by Notification Type",
+       x = "Notification Type",
+       y = "Predicted Step Counts", 
+       fill = "Notification Type") +
+    scale_fill_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+  theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=15, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+
+pred_rq1  
+# save plot
+ggsave(pred_rq1, filename = paste0("pred_rq1", ".png"),  bg = "transparent")
+
+
+#====================================================================
+# RQ 1a.1 (RQ3a): Effects of Framing Styles * Self-Efficacy on Step Counts
+#====================================================================
+# Convert relevant columns to factors
+mydata_steps_gf$user.index <- as.factor(mydata_steps_gf$user.index)
+mydata_steps_gf$notif_type <- as.factor(mydata_steps_gf$notif_type)
+
+# Fit the negative binomial GLMM
+model_nb_glmm_1b <- glmmTMB(total_steps ~ notif_type*selfeff.intake_r + (1 | user.index), 
+                         data = mydata_steps_gf, 
+                         family = nbinom2)
+
+# View the summary of the model
+summary(model_nb_glmm_1b)
+
+# glmm table 
+tab_model(model_nb_glmm_1b, 
+          show.se = TRUE,   # Show standard errors
+          show.stat = TRUE, # Show z-values
+          show.p = TRUE)    # Show p-values)  # Add a title
+
+# plot 
+summary(mydata_steps_gf$selfeff.intake_r)
+# create category for viz
+mydata_steps_gf$selfeff_category <- as.factor(cut(mydata_steps_gf$selfeff.intake_r,
+                                        breaks = c(-Inf, 13, 18, Inf),  # Define the breakpoints
+                                        labels = c("Low", "Medium", "High"),  # Define the labels
+                                        right = FALSE))  # "right = FALSE" means "Low" includes values < 13, etc.
+# colnames(summ_mydata_steps_gf)                  
+summ_mydata_steps_gf <- mydata_steps_gf %>%
+    select(notif_type, total_steps, selfeff_category)%>% 
+    gather(key, value, -notif_type, -selfeff_category) %>%
+    group_by(notif_type, selfeff_category) %>%
+    summarise(n=n(),
+            mean = round(mean(value, na.rm=TRUE), digits = 1),
+            sd = round(sd(value, na.rm=TRUE), digits = 1), 
+            se = round(sd(value, na.rm=TRUE)/sqrt(sum(!is.na(value))), digits = 1), 
+            IQR = round(IQR(value, na.rm=TRUE), digits = 1))
+
+view(summ_mydata_steps_gf)
+
+plot1 <- ggplot(subset(summ_mydata_steps_gf, !is.na(notif_type)), aes(x = selfeff_category, y = mean)) +
+    geom_point(aes(color = notif_type), size = 7, alpha = .3)+ 
+    geom_line(aes(color = notif_type, group = notif_type), size = 1.2) + 
+    # geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.3, linewidth = 2) +
+    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+    xlab("Self-Efficacy")+
+    ylab("Average Step Counts")+ 
+    ggtitle("Avg Step Counts x Self-Efficacy\nFraming Styles")+
+    theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+      panel.grid.major = element_blank(), # get rid of major grid
+      panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+    #   axis.line = linewidth(color="black", size=0.5),
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+plot1
+
+# save plot
+ggsave(plot1, filename = paste0("plot1", ".png"),  bg = "transparent")
+
+
+#====================================================================
+# RQ 2: Effects of Framing Styles on User Engagement
+#====================================================================
+colnames(clean_steps_notif_users)
+ux_eng <- clean_steps_notif_users %>%
+  mutate(steps.utime = as.POSIXct(steps.utime, format = "%Y-%m-%d %H:%M:%OS")) %>%
+  group_by(user.index, decision.index, notif_type) %>%
+  arrange(steps.utime) %>%  # Ensure the data is ordered by time within each group
+  filter(!is.na(steps)) %>%
+  mutate(first_step_time = first(steps.utime),  # Capture the first step timestamp
+         step_ge_60_time = steps.utime[which(steps >= 60)[1]]) %>%  # Find first time steps >= 60
+  filter(row_number() == 1) %>%  # Keep only the first instance per decision index
+  mutate(time_to_step_ge_60 = round(difftime(step_ge_60_time, first_step_time, units = "mins"), digits=2)) %>%
+  select(user.index, decision.index, time_to_step_ge_60) %>%
+  ungroup() %>%
+  mutate(time_to_step_ge_60 = round(ifelse(is.na(time_to_step_ge_60) OR , 0.01, time_to_step_ge_60)), digits=2)%>%
+  arrange(user.index, decision.index)
+
+view(ux_eng)
+# view(steps_notif_users)
+summary(ux_eng$time_to_step_ge_60)
+
+
+
+# histogram of total days (why we exclude user #29)
+hist_resptime <- ggplot(ux_eng, aes(x = time_to_step_ge_60, fill=notif_type)) + 
+  geom_histogram(bins = 100,  color = "black") +
+  labs(title = "Distribution of Time (Mins)\nFrom Notification to Sig. Physical Activity", 
+       x = "Time (Mins)", 
+       y = "Frequency", 
+       fill = "Notification Type") +
+    scale_fill_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+  theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )+ 
+      facet_wrap(~notif_type)
+
+hist_resptime
+# save plot
+ggsave(hist_resptime, filename = paste0("hist_resptime", ".png"),  bg = "transparent")
+
+
+# glmm w/ gamma (link log)
+# For the Gamma distribution, the typical link function used is the log link. This ensures the predictions are positive.
+# Fit a GLMM with a Gamma distribution and log link for response time
+model_response_time <- glmmTMB(time_to_step_ge_60 ~ notif_type + (1 | user.index),
+                               family = Gamma(link = "log"), 
+                               data = ux_eng)
+
+# Summary of the model
+summary(model_response_time)
+
+
+################ OLD #####################
+
+# check <- mydata_steps_gf %>%
+#     filter(total_steps > 20000)
+# view(check)
 
 SUMM_mydata_steps_gf <- steps_notif_users %>%
     filter(send == TRUE, !user.index %in% c(22,29)) %>%
@@ -74,42 +398,6 @@ SUMM_mydata_steps_gf <- steps_notif_users %>%
             median = round(median(value, na.rm=TRUE), digits = 1), 
             IQR = round(IQR(value, na.rm=TRUE), digits = 1))
 
-
-# Turn into wide dataset for plottng 
-clean_wide <- SUMM_mydata_steps_gf%>%
-select(user.index,key, notif_type, mean) %>%
-  pivot_wider(names_from = key, values_from = mean)
-view(clean_wide)
-
-
-plot1 <- ggplot(subset(clean_wide, !is.na(notif_type)), aes(x = selfeff.intake_r, y = steps)) +
-    geom_point(aes(color = notif_type), size = 7, alpha = .6)+ 
-    geom_smooth(method = "lm", se = FALSE, aes(color = notif_type)) + 
-    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
-    xlab("Self-Efficacy")+
-    xlim(1, 25) + 
-    ylab("Average Step Counts")+ 
-    ggtitle("Avg Step Counts x Self-Efficacy\nFraming Styles")+
-    theme_bw()+ 
-    theme(
-      plot.title = element_text(face = "bold", size = 30),
-      panel.background = element_rect(fill = "transparent"), # bg of the panel
-      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
-      panel.grid.major = element_blank(), # get rid of major grid
-      panel.grid.minor = element_blank(), # get rid of minor grid
-      legend.title = element_text(face = "bold", size = 20),
-      legend.text = element_text(size = 20),
-      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
-      legend.box.background = element_blank(), # get rid of legend panel bg
-      axis.line = element_line(color="black", size=0.5),
-      axis.title.x = element_text(face="bold", size=20), 
-      axis.text.x = element_text(size=20, face = "bold", color = "black"),
-      axis.title.y = element_text(face="bold", size=20), 
-      axis.text.y = element_text(size=20, face = "bold", color = "black") )
-
-
-# save plot
-ggsave(plot1, filename = paste0("plot1", ".png"),  bg = "transparent")
 
 
 plot2 <- ggplot(subset(clean_wide, !is.na(notif_type)), aes(steps, notif_type, color=notif_type)) +
