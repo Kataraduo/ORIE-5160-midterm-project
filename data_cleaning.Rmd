@@ -205,7 +205,10 @@ tab_model(model_nb_glmm,
 # Create a data frame with predicted values for each notification type
 mydata_steps_gf$predicted_steps <- predict(model_nb_glmm, type = "response")  # Predicted values on original scale
 
-# Summarize predicted steps by notification type for plotting
+colnames(mydata_steps_gf)
+
+
+# Summarize pr  edicted steps by notification type for plotting
 predictions_summary <- mydata_steps_gf %>%
   group_by(notif_type) %>%
   summarize(mean_pred = mean(predicted_steps),
@@ -241,6 +244,43 @@ pred_rq1 <- ggplot(predictions_summary, aes(x = notif_type, y = mean_pred, fill 
 pred_rq1  
 # save plot
 ggsave(pred_rq1, filename = paste0("pred_rq1", ".png"),  bg = "transparent")
+
+# obs summary
+obs_summary <- mydata_steps_gf %>%
+  group_by(notif_type) %>%
+  summarize(mean_obs = mean(total_steps),
+            lower_ci = quantile(total_steps, 0.025),  # 2.5% CI
+            upper_ci = quantile(total_steps, 0.975),  # 97.5% CI
+            se_obs = round(sd(total_steps)/sqrt(length(total_steps))))
+
+# Plot predicted steps with confidence intervals
+obs_rq1 <- ggplot(obs_summary, aes(x = notif_type, y = mean_obs, fill = notif_type)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_obs-se_obs, ymax = mean_obs+se_obs), width = 0.3, linewidth = 2) +
+  labs(title = "Observed Step Counts by Notification Type",
+       x = "Notification Type",
+       y = "Observed Step Counts", 
+       fill = "Notification Type") +
+    scale_fill_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+  theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=15, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+
+obs_rq1  
+# save plot
+ggsave(obs_rq1, filename = paste0("obs_rq1", ".png"),  bg = "transparent")
 
 
 #====================================================================
@@ -317,7 +357,7 @@ ggsave(plot1, filename = paste0("plot1", ".png"),  bg = "transparent")
 #====================================================================
 # RQ 2: Effects of Framing Styles on User Engagement
 #====================================================================
-colnames(clean_steps_notif_users)
+# colnames(clean_steps_notif_users)
 ux_eng <- clean_steps_notif_users %>%
   mutate(steps.utime = as.POSIXct(steps.utime, format = "%Y-%m-%d %H:%M:%OS")) %>%
   group_by(user.index, decision.index, notif_type) %>%
@@ -327,16 +367,14 @@ ux_eng <- clean_steps_notif_users %>%
          step_ge_60_time = steps.utime[which(steps >= 60)[1]]) %>%  # Find first time steps >= 60
   filter(row_number() == 1) %>%  # Keep only the first instance per decision index
   mutate(time_to_step_ge_60 = round(difftime(step_ge_60_time, first_step_time, units = "mins"), digits=2)) %>%
-  select(user.index, decision.index, time_to_step_ge_60) %>%
+  select(user.index, decision.index, time_to_step_ge_60, selfeff.intake_r) %>%
   ungroup() %>%
-  mutate(time_to_step_ge_60 = round(ifelse(is.na(time_to_step_ge_60) OR , 0.01, time_to_step_ge_60)), digits=2)%>%
+  mutate(time_to_step_ge_60 = round(ifelse(is.na(time_to_step_ge_60) | time_to_step_ge_60==0, 0.01, time_to_step_ge_60), digits=2))%>%
   arrange(user.index, decision.index)
 
-view(ux_eng)
-# view(steps_notif_users)
-summary(ux_eng$time_to_step_ge_60)
-
-
+# view(ux_eng)
+# # view(steps_notif_users)
+# summary(ux_eng$time_to_step_ge_60)
 
 # histogram of total days (why we exclude user #29)
 hist_resptime <- ggplot(ux_eng, aes(x = time_to_step_ge_60, fill=notif_type)) + 
@@ -377,6 +415,166 @@ model_response_time <- glmmTMB(time_to_step_ge_60 ~ notif_type + (1 | user.index
 
 # Summary of the model
 summary(model_response_time)
+
+# glmm table 
+tab_model(model_response_time, 
+          show.se = TRUE,   # Show standard errors
+          show.stat = TRUE, # Show z-values
+          show.p = TRUE)    # Show p-values)  # Add a title
+
+# Create a data frame with predicted values for each notification type
+ux_eng$predicted_steps <- predict(model_response_time, type = "response")  # Predicted values on original scale
+
+# Summarize pr  edicted steps by notification type for plotting
+ux_predictions_summary <- ux_eng %>%
+  group_by(notif_type) %>%
+  summarize(mean_pred = mean(predicted_steps),
+            lower_ci = quantile(predicted_steps, 0.025),  # 2.5% CI
+            upper_ci = quantile(predicted_steps, 0.975),  # 97.5% CI
+            se_pred = round(sd(predicted_steps)/sqrt(length(predicted_steps))))
+
+# Plot predicted steps with confidence intervals
+pred_rq2 <- ggplot(ux_predictions_summary, aes(x = notif_type, y = mean_pred, fill = notif_type)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_pred-se_pred, ymax = mean_pred+se_pred), width = 0.3, linewidth = 2) +
+  labs(title = "Predicted Response Time by Notification Type",
+       x = "Notification Type",
+       y = "Predicted Response Time (Mins)", 
+       fill = "Notification Type") +
+    scale_fill_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+  theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=15, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+
+pred_rq2
+# save plot
+ggsave(pred_rq2, filename = paste0("pred_rq2", ".png"),  bg = "transparent")
+
+
+## obs
+# Summarize pr  edicted steps by notification type for plotting
+ux_obs_summary <- ux_eng %>%
+  group_by(notif_type) %>%
+  summarize(mean_pred = mean(time_to_step_ge_60),
+            lower_ci = quantile(time_to_step_ge_60, 0.025),  # 2.5% CI
+            upper_ci = quantile(time_to_step_ge_60, 0.975),  # 97.5% CI
+            se_pred = round(sd(time_to_step_ge_60)/sqrt(length(time_to_step_ge_60))))
+
+# Plot predicted steps with confidence intervals
+ux_obs_summary_rq2 <- ggplot(ux_obs_summary, aes(x = notif_type, y = mean_pred, fill = notif_type)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_errorbar(aes(ymin = mean_pred-se_pred, ymax = mean_pred+se_pred), width = 0.3, linewidth = 2) +
+  labs(title = "Observed Response Time by Notification Type",
+       x = "Notification Type",
+       y = "Observed Response Time (Mins)", 
+       fill = "Notification Type") +
+    scale_fill_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+  theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    #   panel.grid.major = element_blank(), # get rid of major grid
+    #   panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=15, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+
+ux_obs_summary_rq2
+# save plot
+ggsave(ux_obs_summary_rq2, filename = paste0("ux_obs_summary_rq2", ".png"),  bg = "transparent")
+
+
+
+
+
+#====================================================================
+# RQ 2a.1 : Effects of Framing Styles * Self-Efficacy on User Engagement
+#====================================================================
+# Convert relevant columns to factors
+ux_eng$user.index <- as.factor(ux_eng$user.index)
+ux_eng$notif_type <- as.factor(ux_eng$notif_type)
+
+# Fit the negative binomial GLMM
+model_response_time_2 <- glmmTMB(time_to_step_ge_60 ~ notif_type*selfeff.intake_r + (1 | user.index),
+                               family = Gamma(link = "log"), 
+                               data = ux_eng)
+
+# View the summary of the model
+summary(model_response_time_2)
+
+# glmm table 
+tab_model(model_response_time_2, 
+          show.se = TRUE,   # Show standard errors
+          show.stat = TRUE, # Show z-values
+          show.p = TRUE)    # Show p-values)  # Add a title
+
+# plot 
+summary(ux_eng$selfeff.intake_r)
+# create category for viz
+ux_eng$selfeff_category <- as.factor(cut(ux_eng$selfeff.intake_r,
+                                        breaks = c(-Inf, 13, 18, Inf),  # Define the breakpoints
+                                        labels = c("Low", "Medium", "High"),  # Define the labels
+                                        right = FALSE))  # "right = FALSE" means "Low" includes values < 13, etc.
+# colnames(summ_mydata_steps_gf)                  
+summ_ux_eng <- ux_eng %>%
+    select(notif_type, time_to_step_ge_60, selfeff_category)%>% 
+    gather(key, value, -notif_type, -selfeff_category) %>%
+    group_by(notif_type, selfeff_category) %>%
+    summarise(n=n(),
+            mean = round(mean(value, na.rm=TRUE), digits = 1),
+            sd = round(sd(value, na.rm=TRUE), digits = 1), 
+            se = round(sd(value, na.rm=TRUE)/sqrt(sum(!is.na(value))), digits = 1), 
+            IQR = round(IQR(value, na.rm=TRUE), digits = 1))
+
+view(summ_ux_eng)
+
+plot2 <- ggplot(subset(summ_ux_eng, !is.na(notif_type)), aes(x = selfeff_category, y = mean)) +
+    geom_point(aes(color = notif_type), size = 7, alpha = .3)+ 
+    geom_line(aes(color = notif_type, group = notif_type), size = 1.2) + 
+    # geom_errorbar(aes(ymin = mean-se, ymax = mean+se), width = 0.3, linewidth = 2) +
+    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+    xlab("Self-Efficacy")+
+    ylab("Average Response Time (Mins)")+ 
+    ggtitle("Avg Response Time (Mins) x Self-Efficacy\nFraming Styles")+
+    theme_bw()+ 
+    theme(
+      plot.title = element_text(face = "bold", size = 30),
+      panel.background = element_rect(fill = "transparent"), # bg of the panel
+      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+      panel.grid.major = element_blank(), # get rid of major grid
+      panel.grid.minor = element_blank(), # get rid of minor grid
+      legend.title = element_text(face = "bold", size = 20),
+      legend.text = element_text(size = 20),
+      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+      legend.box.background = element_blank(), # get rid of legend panel bg
+    #   axis.line = linewidth(color="black", size=0.5),
+      axis.title.x = element_text(face="bold", size=20), 
+      axis.text.x = element_text(size=20, face = "bold", color = "black"),
+      axis.title.y = element_text(face="bold", size=20), 
+      axis.text.y = element_text(size=20, face = "bold", color = "black") )
+plot2
+
+# save plot
+ggsave(plot2, filename = paste0("plot2", ".png"),  bg = "transparent")
+
 
 
 ################ OLD #####################
