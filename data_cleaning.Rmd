@@ -1,5 +1,15 @@
-## Setup    
-```{r setup, include=FALSE, echo=FALSE}
+---
+title: "Midterm"
+author: Thalia Viranda
+date: October 16th, 2024
+output: 
+  pdf_document:
+    latex_engine: xelatex
+
+---
+
+
+```{r setup, include=TRUE, echo=TRUE}
 # Set working directory - CHANGE THIS TO YOURS
 setwd("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files")
 # Please update this to your directory as needed
@@ -598,32 +608,32 @@ SUMM_mydata_steps_gf <- steps_notif_users %>%
 
 
 
-plot2 <- ggplot(subset(clean_wide, !is.na(notif_type)), aes(steps, notif_type, color=notif_type)) +
-    geom_boxplot() + 
-    scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
-    ylab("Framing Styles")+
-    xlab("Average Step Counts")+ 
-    ggtitle("Avg Step Counts \nby Framing Styles")+
-    theme_bw()+ 
-    theme(
-      plot.title = element_text(face = "bold", size = 30),
-      panel.background = element_rect(fill = "transparent"), # bg of the panel
-      plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
-      panel.grid.major = element_blank(), # get rid of major grid
-      panel.grid.minor = element_blank(), # get rid of minor grid
-      legend.title = element_text(face = "bold", size = 20),
-      legend.text = element_text(size = 20),
-      legend.background = element_rect(fill = "transparent"), # get rid of legend bg
-      legend.box.background = element_blank(), # get rid of legend panel bg
-      axis.line = element_line(color="black", size=0.5),
-      axis.title.x = element_text(face="bold", size=20), 
-      axis.text.x = element_text(size=20, face = "bold", color = "black"),
-      axis.title.y = element_text(face="bold", size=20), 
-      axis.text.y = element_text(size=20, face = "bold", color = "black") )
-plot2
+# plot2 <- ggplot(subset(clean_wide, !is.na(notif_type)), aes(steps, notif_type, color=notif_type)) +
+#     geom_boxplot() + 
+#     scale_color_manual(name="Framing Styles", values=c("#006699", "#990033"))+
+#     ylab("Framing Styles")+
+#     xlab("Average Step Counts")+ 
+#     ggtitle("Avg Step Counts \nby Framing Styles")+
+#     theme_bw()+ 
+#     theme(
+#       plot.title = element_text(face = "bold", size = 30),
+#       panel.background = element_rect(fill = "transparent"), # bg of the panel
+#       plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+#       panel.grid.major = element_blank(), # get rid of major grid
+#       panel.grid.minor = element_blank(), # get rid of minor grid
+#       legend.title = element_text(face = "bold", size = 20),
+#       legend.text = element_text(size = 20),
+#       legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+#       legend.box.background = element_blank(), # get rid of legend panel bg
+#       axis.line = element_line(color="black", size=0.5),
+#       axis.title.x = element_text(face="bold", size=20), 
+#       axis.text.x = element_text(size=20, face = "bold", color = "black"),
+#       axis.title.y = element_text(face="bold", size=20), 
+#       axis.text.y = element_text(size=20, face = "bold", color = "black") )
+# plot2
 
-# save plot
-ggsave(plot2, filename = paste0("plot2", ".png"),  bg = "transparent")
+# # save plot
+# ggsave(plot2, filename = paste0("plot2", ".png"),  bg = "transparent")
 
 max(mydata_steps_gf$total_steps[mydata_steps_gf$notif_type=="Sedentary"])
 hist(mydata_steps_gf$total_steps[mydata_steps_gf$notif_type=="Sedentary"], breaks = 12000)
