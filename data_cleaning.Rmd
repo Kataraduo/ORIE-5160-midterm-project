@@ -11,7 +11,8 @@ output:
 
 ```{r setup, include=TRUE, echo=TRUE}
 # Set working directory - CHANGE THIS TO YOURS
-setwd("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files")
+main_dir <- "/Users/thaliaviranda/Documents/GitHub/ORIE-5160-midterm-project/"
+setwd(main_dir)
 # Please update this to your directory as needed
 
 # load packages
@@ -25,11 +26,11 @@ if (!require(pkg, character.only = TRUE)){
 }
 
 # input raw data
-steps_gf <- read.csv("gfsteps.csv", header = TRUE)
-steps_jb <- read.csv("jbsteps.csv", header = TRUE)
-users_info <- read.csv("users.csv", header = TRUE)
+steps_gf <- read.csv(paste0(main_dir, "data/", "gfsteps.csv"), header = TRUE)
+steps_jb <- read.csv(paste0(main_dir, "data/", "jbsteps.csv"), header = TRUE)
+users_info <- read.csv(paste0(main_dir, "data/", "users.csv"), header = TRUE)
 
-suggestions_dat <- read.csv("suggestions.csv", header = TRUE)
+suggestions_dat <- read.csv(paste0(main_dir, "data/", "suggestions.csv"), header = TRUE)
 
 # view(suggestions_dat)
 mydata_qs <- users_info %>% 
