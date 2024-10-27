@@ -12,6 +12,7 @@ output:
 ```{r setup, include=TRUE, echo=TRUE}
 # Set working directory - CHANGE THIS TO YOURS
 main_dir <- "/Users/thaliaviranda/Documents/GitHub/ORIE-5160-midterm-project/"
+data_dir <- main_dir + "/data"
 setwd(main_dir)
 # Please update this to your directory as needed
 
@@ -26,11 +27,11 @@ if (!require(pkg, character.only = TRUE)){
 }
 
 # input raw data
-steps_gf <- read.csv(paste0(main_dir, "data/", "gfsteps.csv"), header = TRUE)
-steps_jb <- read.csv(paste0(main_dir, "data/", "jbsteps.csv"), header = TRUE)
-users_info <- read.csv(paste0(main_dir, "data/", "users.csv"), header = TRUE)
+steps_gf <- read.csv(paste0(data_dir, "gfsteps.csv"), header = TRUE)
+steps_jb <- read.csv(paste0(data_dir, "data/", "jbsteps.csv"), header = TRUE)
+users_info <- read.csv(paste0(data_dir, "data/", "users.csv"), header = TRUE)
 
-suggestions_dat <- read.csv(paste0(main_dir, "data/", "suggestions.csv"), header = TRUE)
+suggestions_dat <- read.csv(paste0(data_dir, "data/", "suggestions.csv"), header = TRUE)
 
 # view(suggestions_dat)
 mydata_qs <- users_info %>% 
