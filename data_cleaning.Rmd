@@ -94,8 +94,8 @@ steps_notif_users <- steps_notif_users %>%
 summary(steps_notif_users$steps, na.rm=TRUE) 
 # get participant with max steps, and exclude 
 
-#export table
-# write.csv(as.data.frame(steps_notif_users), paste0("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files", "/steps_notif_users", ".csv"))
+# export table
+write.csv(as.data.frame(steps_notif_users), paste0("/Users/thaliaviranda/Documents/VSCode/HeartStepsV1/data_files", "/steps_notif_users", ".csv"))
 
 # Function to handle missing data in 'steps' column using LOCF
 handle_missing_steps_locf <- function(data) {
@@ -106,7 +106,7 @@ handle_missing_steps_locf <- function(data) {
 
 
 clean_steps_notif_users <- steps_notif_users %>%
-    filter(send == TRUE, !user.index %in% c(29, 22)) %>% #user 29 was excluded because of total days
+    filter(send == TRUE, !user.index %in% c(29, 22), !is.na(decision.index)) %>% #user 29 was excluded because of total days
     mutate(notif_type = as.factor(ifelse(send.active==TRUE, "Active", "Sedentary"))) %>%
     filter(!is.na(notif_type)) %>%
     mutate(steps_date = as.Date(steps.utime, format="%Y-%m-%d %H:%M:%S")) %>%
@@ -128,7 +128,7 @@ length(unique(clean_steps_notif_users$user.index))
 mydata_steps_gf <- clean_steps_notif_users %>%
     filter(user.index != 22) %>% # user 22 was excluded because of >40,000 steps between notifs
     select(user.index, steps_date, day, decision.index, notif_type, steps, selfeff.intake_r)%>% 
-    group_by(user.index, steps_date, day, notif_type, decision.index, selfeff.intake_r) %>%
+    group_by(user.index, day, notif_type, decision.index, selfeff.intake_r) %>% # removed steps_date, which was causing weird issue
     summarise(n=n(),
             total_steps = sum(steps, na.rm = TRUE))%>%
     ungroup() %>%
@@ -194,6 +194,8 @@ SUMM_mydata_steps_gf <- clean_steps_notif_users %>%
             median = round(median(value, na.rm=TRUE), digits = 1), 
             IQR = round(IQR(value, na.rm=TRUE), digits = 1))
 view(SUMM_mydata_steps_gf)
+
+
 #====================================================================
 # RQ 1: Effects of Framing Styles on Step Counts
 #====================================================================
