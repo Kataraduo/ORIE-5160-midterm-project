@@ -1,7 +1,8 @@
 # ORIE-5160 Midterm Project: HeartSteps Analysis
+This repository contains the code, data processing scripts, and analysis for our project on how framing styles in behavior change notifications influence physical activity levels. Specifically, we compare "Active" versus "Sedentary" notifications and explore the role of baseline self-efficacy in moderating the effectiveness of these frames.
 
 ## Project Overview
-This project analyzes data from the HeartSteps mobile health intervention to investigate how different types of activity suggestions ("active" vs. "sedentary") affect physical activity and user engagement. The data includes minute-by-minute step counts from the Jawbone tracker and Google Fit, along with notification data.
+Our project analyzes data from the HeartStepsV1 randomized controlled trial, which aimed to encourage physical activity through contextually tailored notifications. Using Google Fit and Jawbone step counts recorded 30 and 60 minutes after notifications, we assessed the effects of framing styles on activity levels.
 
 ## Dataset
 
@@ -11,12 +12,20 @@ For more information, see the original dataset on GitHub: [HeartStepsV1 Dataset]
 
 
 ## Problem Statement
-We aim to answer the following questions:
-- Which activity suggestion framing ("active" vs. "sedentary") leads to better health outcomes (e.g., steps, active minutes)?
-- Which framing results in faster user engagement (e.g., time until physical activity after a notification)?
+We aim to answer the following research questions:
+- **Primary Question:** How does the framing of activity suggestions (Active vs. Sedentary) impact physical activity, measured through step counts 30 and 60 minutes after notification?
+- **Exploratory Question:** Does baseline self-efficacy moderate the impact of framing styles on physical activity?
 
-### Exploratory Analysis
-We will explore how user location and self-efficacy influence the effectiveness of these suggestions.
+## Key Findings
+- "Sedentary" notifications led to a statistically significant increase in Google Fit step counts at 60 minutes post-notification, suggesting a potential effect of framing style.
+- The effect was not observed in 30-minute post-notification data or in Jawbone measurements, indicating device and time-specific differences.
+- Baseline self-efficacy showed no significant moderating effect, though a marginal interaction was observed in log-transformed data.
+
+## Methodology (PCS Framework)
+- **Dataset:** We used the HeartStepsV1 dataset, consisting of Google Fit and Jawbone step count data, notifications, and user demographics collected over six weeks for 37 participants.
+- **Framework:** Our analysis follows the Predictability, Computability, and Stability (PCS) framework to ensure that results are robust and generalizable.
+- **Data Cleaning:** Data was filtered to exclude outliers and ensure reasonable step counts. Inconsistencies in self-efficacy scores were addressed by reverse-coding.
+- **Analysis:** We applied a Generalized Linear Mixed Model (GLMM) with a negative binomial distribution due to zero-inflated data. Log transformations were also used to assess data normality.
 
 ## Repository Structure
 ```
@@ -26,30 +35,36 @@ ORIE-5160-midterm-project/
 │   ├── gfsteps.csv          # Google Fit step data
 │   ├── jbsteps.csv          # Jawbone tracker step data
 │   ├── suggestions.csv      # Activity suggestions and context data
-│   └── users.csv            # User demographics and survey data
+│   ├── users.csv            # User demographics and survey data
+│   ├── mydata_steps_gf_py.csv  # Dataset generated during cleaning and preprocessing
+│   └── steps_notif_users_py.csv   # Dataset generated during cleaning and preprocessing       
 │
 ├── dslc_documentation/
+│   ├── 01_cleaning_v2.ipynb    # Data cleaning steps (partial)
+│   └── main_code.ipynb         # Full code
 │
-├── functions/
-│   ├── 01_cleaning.ipynb    # Data cleaning script
-│   └── 02_eda.ipynb         # Exploratory Data Analysis script
+├── figure/
+│   ├── hist_totalday.png      # All the figures generated during the analysis 
+│   └── ...
+│
 │
 └── README.md
 
 ```
 
 
-## Methodology (PCS Framework)
-1. **Problem Formulation**: Investigate how activity suggestion framing impacts physical activity.
-2. **Data Cleaning & Preprocessing**: Handle missing data, standardize timestamps, and merge step counts with notification data.
-3. **EDA**: Visualize step counts and engagement times based on suggestion type.
-4. **Dimensionality Reduction**: Use PCA to reduce the dimensionality of high-volume datasets.
-5. **Predictive Analysis**: Run t-tests, regression models to compare framing impacts on activity and engagement.
-6. **Evaluation**: Use cross-validation for result validation.
 
-## Conjectures
-1. Active suggestions will lead to more steps and faster engagement.
-2. Self-efficacy and location will moderate the impact of the suggestions.
+## Results and Discussion
+The primary findings suggest that "Sedentary" notifications may increase physical activity within specific timeframes and contexts. The PCS framework helped reveal the influence of computational and device-specific choices on stability and generalizability.
+
+## Limitations
+- **Sample Size:** The small sample (N=25) limited the power to detect subtle effects and may have increased Type II error.
+- **Device Differences:** Variability between Google Fit and Jawbone highlights the importance of cross-device validation.
+- **Duration:** The six-week trial may not be sufficient to capture long-term behavior changes.
+
 
 ## GitHub Repository
 Collaborate with us on this project: [GitHub Repository Link](https://github.com/Kataraduo/ORIE-5160-midterm-project.git)
+
+## Acknowledgments
+We thank Prof. Raaz Dwivedi and our TA Kyuseong Choi for their insightful feedback and guidance throughout this project.
